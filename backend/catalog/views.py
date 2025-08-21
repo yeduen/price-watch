@@ -108,7 +108,18 @@ class WatchViewSet(viewsets.ModelViewSet):
         """모니터링 등록"""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
+        watch = serializer.save()
+        
+        # 즉시 스캔 태스크 트리거 (지연 0~5초)
+        import random
+        from alerts.tasks import scan_single_watch
+        
+        delay_seconds = random.uniform(0, 5)
+        scan_single_watch.apply_async(
+            args=[watch.id], 
+            countdown=int(delay_seconds)
+        )
+        
         headers = self.get_success_headers(serializer.data)
         return Response(
             serializer.data, 

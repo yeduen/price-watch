@@ -163,6 +163,21 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 
+# Celery 추가 설정
+CELERY_TASK_ALWAYS_EAGER = get_env_bool('CELERY_TASK_ALWAYS_EAGER', False)  # 개발용 동기 실행
+CELERY_TASK_EAGER_PROPAGATES = True
+CELERY_WORKER_CONCURRENCY = get_env_int('CELERY_WORKER_CONCURRENCY', 4)
+CELERY_MAX_TASKS_PER_CHILD = get_env_int('CELERY_MAX_TASKS_PER_CHILD', 1000)
+
+# 이메일 설정 (개발용)
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # 개발용 콘솔 출력
+DEFAULT_FROM_EMAIL = 'noreply@pricewatch.com'
+EMAIL_HOST = get_env('EMAIL_HOST', 'localhost')
+EMAIL_PORT = get_env_int('EMAIL_PORT', 587)
+EMAIL_USE_TLS = get_env_bool('EMAIL_USE_TLS', True)
+EMAIL_HOST_USER = get_env('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = get_env('EMAIL_HOST_PASSWORD', '')
+
 # 로깅 설정
 from core.logging import configure_logging
 configure_logging(get_env('LOG_LEVEL', 'INFO'))
