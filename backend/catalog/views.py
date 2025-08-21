@@ -13,6 +13,7 @@ from .serializers import (
     OfferListSerializer, PriceHistoryListSerializer,
     WatchCreateSerializer, WatchListSerializer, WatchUpdateSerializer
 )
+from .services.search import search_service
 
 
 class ProductViewSet(viewsets.ReadOnlyModelViewSet):
@@ -30,8 +31,8 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
         return ProductListSerializer
     
     @action(detail=False, methods=['get'])
-    def search(self, request):
-        """상품 검색"""
+    async def search(self, request):
+        """상품 검색 (프로바이더 기반)"""
         query = request.query_params.get('q', '')
         if not query:
             return Response(
@@ -39,24 +40,22 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # 검색 쿼리 구성
-        search_query = Q()
-        for term in query.split():
-            search_query |= (
-                Q(brand__icontains=term) |
-                Q(model_code__icontains=term) |
-                Q(name__icontains=term) |
-                Q(gtin__icontains=term)
+        try:
+            # 검색 서비스 호출
+            result = await search_service.search_products(query)
+            
+            return Response({
+                'query': query,
+                'count': result['total_count'],
+                'products': result['products'],
+                'offers': result['offers'],
+                'best_price': result['best_price']
+            })
+        except Exception as e:
+            return Response(
+                {'error': f'검색 중 오류가 발생했습니다: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-        
-        products = self.queryset.filter(search_query)
-        serializer = self.get_serializer(products, many=True)
-        
-        return Response({
-            'query': query,
-            'count': products.count(),
-            'results': serializer.data
-        })
 
 
 class OfferViewSet(viewsets.ReadOnlyModelViewSet):
