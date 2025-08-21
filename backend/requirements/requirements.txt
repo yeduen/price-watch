@@ -3,50 +3,12 @@
 # =============================================================================
 
 # Django & REST Framework
-Django==5.0.2
-djangorestframework==3.14.0
-django-cors-headers==4.3.1
-django-filter==23.5
-django-extensions==3.2.3
-
-# Database
-psycopg2-binary==2.9.9
-redis==5.0.1
-
-# Task Queue
-celery==5.3.4
-django-celery-beat==2.5.0
-django-celery-results==2.5.1
-
-# HTTP & API
-requests==2.31.0
-httpx==0.25.2
-aiohttp==3.9.1
-
-# Data Processing
-pandas==2.1.4
-numpy==1.25.2
-python-dateutil==2.8.2
-
-# Web Scraping (if needed)
-beautifulsoup4==4.12.2
-lxml==4.9.3
-selenium==4.15.2
-
-# Monitoring & Logging
-structlog==23.2.0
-sentry-sdk==1.38.0
-
-# Security
-cryptography==41.0.8
-django-ratelimit==4.1.0
-
-# Utilities
-python-dotenv==1.0.0
-click==8.1.7
-tqdm==4.66.1
-
-# Testing (optional for production)
-pytest==7.4.3
-pytest-django==4.7.0
-factory-boy==3.3.0
+Django>=5.0
+djangorestframework
+psycopg[binary]
+python-dotenv
+celery
+redis
+requests
+pydantic
+structlog
