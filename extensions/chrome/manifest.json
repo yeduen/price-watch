@@ -1,0 +1,71 @@
+{
+  "manifest_version": 3,
+  "name": "Price Watch - 최저가 검색기",
+  "version": "1.0.0",
+  "description": "현재 페이지 상품의 다중 마켓 최저가를 검색하고 모니터링하는 확장 프로그램",
+  
+  "permissions": [
+    "activeTab",
+    "storage",
+    "notifications"
+  ],
+  
+  "host_permissions": [
+    "https://*.coupang.com/*",
+    "https://*.11st.co.kr/*",
+    "https://*.gmarket.co.kr/*",
+    "https://*.auction.co.kr/*",
+    "http://localhost:8000/*"
+  ],
+  
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.coupang.com/*",
+        "https://*.11st.co.kr/*",
+        "https://*.gmarket.co.kr/*",
+        "https://*.auction.co.kr/*"
+      ],
+      "js": ["src/content.js"],
+      "css": ["src/content.css"],
+      "run_at": "document_end"
+    }
+  ],
+  
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_title": "Price Watch",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  
+  "side_panel": {
+    "default_path": "src/sidepanel.html"
+  },
+  
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  
+  "web_accessible_resources": [
+    {
+      "resources": ["src/*"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

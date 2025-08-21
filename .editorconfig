@@ -1,0 +1,51 @@
+# EditorConfig is awesome: https://EditorConfig.org
+
+# top-most EditorConfig file
+root = true
+
+# Unix-style newlines with a newline ending every file
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Python files
+[*.py]
+indent_style = space
+indent_size = 4
+
+# JavaScript, TypeScript, JSON, CSS, HTML, Markdown
+[*.{js,jsx,ts,tsx,json,css,html,md}]
+indent_style = space
+indent_size = 2
+
+# YAML files
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+# PowerShell scripts
+[*.ps1]
+indent_style = space
+indent_size = 2
+
+# Batch files
+[*.{bat,cmd}]
+indent_style = space
+indent_size = 2
+
+# Django templates
+[*.{html,txt}]
+indent_style = space
+indent_size = 2
+
+# Requirements files
+[requirements*.txt]
+indent_style = space
+indent_size = 4
+
+# Manifest files
+[manifest.json]
+indent_style = space
+indent_size = 2

@@ -1,0 +1,184 @@
+# Cursor Rules — 온라인 쇼핑 최저가 자동 검색기 (Windows)
+
+## 0) 공통 운영 원칙
+- 목표: "동일 상품을 다중 마켓에서 탐색 → 최저가 산출 → 제휴링크 제공 → 가격 변동 알림"을 안정적으로 제공.
+- 우선순위: (1) 합법/제휴 API 우선, (2) 정확한 상품 매칭, (3) 체감가(쿠폰/배송비) 반영, (4) 확장성 있는 구조.
+- 코드 작성 시: 명시적 타입(가능하면), 에러 처리를 우선, 로깅과 리트라이를 기본 탑재.
+
+## 1) 모노레포 구조 (최소)
+repo-root/
+  backend/                # Django REST(FastAPI로 대체 가능) - API/워커
+    marketwatch/          # Django 프로젝트 루트
+    apps/
+      core/               # 공통 유틸, 예외, 설정
+      catalog/            # Product, Offer, Matching
+      affiliate/          # 제휴 링크/리포트 수집
+      alerts/             # Watch/알림(이메일/푸시)
+    requirements/         # requirements-dev.txt, requirements.txt
+    scripts/              # 윈도우 전용 유틸 스크립트(.ps1/.bat)
+    tests/
+  frontend/               # React(Ionic 가능) 웹
+    src/
+    public/
+  extensions/             # 브라우저 확장(Manifest V3)
+    chrome/
+      manifest.json
+      src/
+  ops/                    # 배포/도구: 도커파일, CI, 문서 등
+  docs/                   # API 명세, ERD, 설계 문서
+  .editorconfig
+  .gitignore
+  README.md
+
+## 2) 개발 환경 (Windows)
+- 쉘: PowerShell 권장.
+- Python 3.12+, Node 20+.
+- 가상환경: `py -m venv .venv` → `.\.venv\Scripts\Activate.ps1`
+- 백엔드 실행:
+  - `pip install -r backend/requirements/requirements-dev.txt`
+  - `python backend/manage.py migrate`
+  - `python backend/manage.py runserver 0.0.0.0:8000`
+- 프런트 실행:
+  - `cd frontend`
+  - `npm install`
+  - `npm run dev`
+- 확장 실행(로컬 개발):
+  - Chrome → 확장 프로그램 → 개발자 모드 → 압축해제된 확장로드 → `extensions/chrome`
+
+## 3) 환경변수(.env) 규칙
+- 저장소에 커밋 금지. Windows는 `.env` 파일 루트/백엔드 각각 두기.
+- 필수 키:
+  - 공통: `APP_ENV=local|dev|prod`, `SENTRY_DSN(optional)`, `LOG_LEVEL=INFO`
+  - Django: `SECRET_KEY`, `DB_URL`(Postgres), `REDIS_URL`
+  - 제휴/API: `AFFIL_COUPANG_KEY`, `AFFIL_11ST_KEY`, 기타 보완 프로바이더 키
+  - 메일/푸시: `SMTP_*` 또는 외부 푸시 서비스 키
+
+## 4) 데이터 모델(요지)
+- Product(id, brand, model_code, name, gtin, spec_hash, created_at, updated_at)
+- Offer(id, product_id, marketplace, seller, price, shipping_fee, coupon_hint, url, affiliate_url, fetched_at)
+- PriceHistory(id, offer_id, price, total_price, recorded_at)
+- Watch(id, user_id, product_id, target_price, created_at, is_active)
+- MappingRule(id, brand, tokens_regex, normalize_rules_json)
+
+규칙:
+- 동일 상품군은 `gtin` 우선 매칭. 없으면 brand/model/spec 토큰화 유사도 스코어로 묶는다.
+- 가격 히스토리는 Offer 스냅샷과 분리 저장.
+
+## 5) API 스펙(초안)
+- `GET /api/v1/search?q=키워드` → { products[], offers[], best_price }
+- `GET /api/v1/products/{id}` → 상세 + 히스토리
+- `POST /api/v1/watch` → { product_id, target_price } 등록
+- `GET /api/v1/watches` → 리스트
+- `DELETE /api/v1/watches/{id}`
+- `GET /api/v1/offers?product_id=...`
+- 응답 공통: `source`(마켓), `lastFetchedAt`, `price`, `totalPrice(price+shipping-coupon)`
+
+명시:
+- totalPrice 계산 시 배송비/쿠폰 가정값은 프리미엄 기능에서 정확도↑(카드/쿠폰 룰 업데이트).
+
+## 6) 백엔드 코딩 규칙
+- 계층:
+  - `apps/catalog/services/matching.py` — 상품 매칭 로직(토큰화, 유사도 스코어)
+  - `apps/catalog/providers/` — 마켓별 수집 어댑터(공식 API 우선)
+  - `apps/affiliate/trackers/` — 클릭/전환 트래킹, 제휴 링크 생성
+  - `apps/alerts/tasks.py` — Celery 작업(가격 모니터링/알림)
+- 에러 핸들링:
+  - 외부 호출은 모두 타임아웃/리트라이(지수 백오프).
+  - 실패는 워닝 로그+사유 저장(차단/429/파싱오류 등).
+- 로깅:
+  - `structlog` 또는 Python logging JSONFormatter. 요청ID/유저ID/프로바이더/쿼리 포함.
+- 테스트:
+  - 프로바이더별 통합테스트에 VCR(py) 또는 응답 fixture 사용.
+- 성능:
+  - `offers` 조회는 최신 1개/상위 N개 인덱스 최적화.
+  - 스케줄러는 고정 간격+이벤트 기반(Watch 등록 시 우선 스캔).
+
+## 7) 매칭 로직(요지)
+- normalize(title) → 소문자, 괄호·특수문자 제거, 공백 정규화
+- 토큰 추출: brand, model_code(영숫자), 용량/크기(정규식), 색상 키워드
+- 스코어 = w1*brand + w2*model_code_sim + w3*spec_overlap + w4*price_proximity
+- 임계값 τ 이상이면 동일 상품으로 묶음. gtin一致 시 하드매칭.
+- 충돌 시: 사용자가 수동 병합 가능하도록 후보군 반환(관리자용 API).
+
+## 8) 프런트(React/Ionic) 규칙
+- 페이지: 검색(Search), 상품상세(Detail), 내 알림(WatchList), 가격히스토리(Chart)
+- 상태: RTK Query 또는 React Query로 API 캐시 일관화.
+- UI:
+  - 결과카드: 이미지, 마켓 로고, 현재가, 배송비, 체감가, 바로가기 버튼(제휴 링크)
+  - 상세: 가격 히스토리 차트(최근 30/90일), 알림 등록/해제
+- 에러/로딩 UX: 스켈레톤 → 비어 있음 상태 → 재시도 버튼.
+
+## 9) 브라우저 확장(Manifest V3)
+- content script: 페이지에서 상품명/모델코드 추출 → 백엔드 `/search` 호출
+- side panel/팝업: 현재 페이지 상품의 다른 몰 최저가 노출
+- 개인정보/권한 최소화, domain match는 화이트리스트로 관리
+
+## 10) 제휴/컴플라이언스 가이드
+- 공식/파트너스 API 우선 사용. 약관 준수(표시 규정, 캐시 주기, 클릭 추적 정책).
+- 비공식 스크래핑은 보완수단이며 호출 빈도/robots/referer 정책 준수.
+- 결과 카드에 "가격 출처/갱신시각" 명시. 로고/상표 가이드 준수.
+
+## 11) 작업 순서(초기 스프린트 1~2주)
+1) 백엔드 뼈대(Django) + `search` 엔드포인트(목데이터)  
+2) providers 스켈레톤 2종(공식 API, mock) + 매칭 v0(룰기반)  
+3) 프런트 검색 화면/결과 카드/상세 라우팅  
+4) Watch 등록/알림(이메일 우선) + Celery 스케줄  
+5) 가격 히스토리 저장 및 차트 표시  
+6) 크롬 확장 v0(현재 페이지 → search 결과 사이드패널)
+
+## 12) 커밋/브랜치 정책
+- 브랜치: `main`(배포), `dev`(개발), `feat/*`, `fix/*`
+- 커밋 컨벤션(예):  
+  - feat(be): add product matching v0  
+  - feat(fe): search page + result cards  
+  - chore(ops): add pre-commit and editorconfig  
+  - fix(be): provider retry/backoff on 429
+- PR 템플릿: 의도/테스트/체크리스트/스크린샷(프런트).
+
+## 13) 품질/자동화
+- pre-commit: isort/black/flake8 또는 ruff, markdownlint, prettier.
+- 타입: Python(가능하면 pydantic/typing), TS(프런트/확장).
+- 테스트 최소 기준: 매칭 유닛테스트, provider 통합, API 스냅샷.
+
+## 14) Windows 전용 스크립트 예시
+- 가상환경 & 서버 실행 (PowerShell):
+  scripts/dev.ps1
+    py -m venv .venv
+    .\.venv\Scripts\Activate.ps1
+    pip install -r backend/requirements/requirements-dev.txt
+    python backend/manage.py migrate
+    python backend/manage.py runserver 0.0.0.0:8000
+
+- 프런트 실행:
+  scripts/fe.ps1
+    cd frontend
+    npm install
+    npm run dev
+
+- Celery/워커 실행(예):
+  scripts/worker.ps1
+    .\.venv\Scripts\Activate.ps1
+    celery -A marketwatch worker -l info
+    celery -A marketwatch beat -l info
+
+## 15) TODO 태그 규칙 (Cursor가 인지할 수 있게 명확히)
+- // TODO(be): 외부 API 응답모형 정의, 예외 케이스(가격/품절/옵션) 추가
+- // TODO(match): 모델 코드 정규식 보강(삼성/애플/샤오미 패턴)
+- // TODO(fe): 체감가(Badge) UI + 정렬(최저가/체감가/배송비)
+- // TODO(ext): PDP 추출기 사이트별 어댑터(선: 쿠팡, 11번가)
+- // TODO(ops): .env 템플릿/샘플 제공(.env.example)
+
+## 16) 구현시 주의(리스크)
+- 과호출/차단(429) → 백오프/캐싱/큐잉. 구조적으로 트래픽 스파이크 흡수.
+- 상품 동일성 오인매칭 → 히스토리/알림 오염. 보수적으로 매칭, 수동 병합 도구 제공.
+- 제휴 트래킹 누락 → 매출 손실. 모든 아웃바운드 링크는 추적 파라미터 필수.
+
+## 17) Done 기준(Definition of Done)
+- 검색→최저가→상세→알림 흐름이 E2E로 작동.
+- 2개 이상 마켓에서 최소 50개 상품 케이스 통과.
+- 알림 수신/차트 렌더/링크 추적 로그 확인.
+- 에러/경고 로그 무한 반복 없음, 429 대응 포함.
+
+# Assistant에 대한 추가 지시 (Cursor용)
+- "파일을 수정할 때는 반드시 경로/파일명/라인 근처를 명시" (예: backend/apps/catalog/services/matching.py: add `score_product()`).
+- "새 기능 제안 시 TODO 태그를 명확히 남기기".
