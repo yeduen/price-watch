@@ -3,15 +3,15 @@
 """
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 
 # 프로젝트 루트 디렉토리
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-# .env 파일 로드
-env_path = BASE_DIR / ".env"
-if env_path.exists():
-    load_dotenv(env_path)
+# .env 파일 로드 (임시 비활성화)
+# env_path = BASE_DIR / ".env"
+# if env_path.exists():
+#     load_dotenv(env_path)
 
 def get_env(key: str, default: str = None) -> str:
     """환경 변수 값을 가져옵니다."""

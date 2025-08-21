@@ -5,6 +5,8 @@
 # Django & REST Framework
 Django>=5.0
 djangorestframework
+django-filter
+django-cors-headers
 psycopg[binary]
 python-dotenv
 celery
